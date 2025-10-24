@@ -1,0 +1,32 @@
+{
+  "name": "proplend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dxstvn/PropLend.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Dxstvn/PropLend/issues"
+  },
+  "homepage": "https://github.com/Dxstvn/PropLend#readme",
+  "description": "",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-keystore": "^3.0.2",
+    "@nomicfoundation/hardhat-toolbox-mocha-ethers": "^3.0.0",
+    "@nomicfoundation/hardhat-typechain": "^3.0.0",
+    "@playwright/test": "^1.56.1",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@typechain/hardhat": "^9.1.0",
+    "@types/chai": "^5.2.3",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.7",
+    "playwright": "^1.56.1",
+    "typechain": "^8.3.2"
+  }
+}
