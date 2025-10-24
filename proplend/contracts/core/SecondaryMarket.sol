@@ -84,13 +84,29 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
         if (amount == 0) revert InvalidAmount();
         if (price == 0) revert InvalidPrice();
 
-        // TODO: Implement order creation in Week 3
-        // For Sell orders:
-        // - Transfer tranche tokens from seller to contract (escrow)
-        // - Create order record
-        // For Buy orders:
-        // - Transfer USDC from buyer to contract (escrow)
-        // - Create order record
+        // Get the appropriate token
+        IERC20 token = isSenior ? seniorToken : juniorToken;
+
+        if (orderType == OrderType.Sell) {
+            // Sell order: Escrow tranche tokens from seller
+            // Check seller has sufficient balance
+            if (token.balanceOf(msg.sender) < amount) revert InsufficientBalance();
+
+            // Transfer tokens to contract for escrow
+            bool success = token.transferFrom(msg.sender, address(this), amount);
+            require(success, "Token transfer failed");
+        } else {
+            // Buy order: Escrow USDC from buyer
+            // Calculate total USDC needed
+            uint256 totalCost = (amount * price) / 1e6;
+
+            // Check buyer has sufficient USDC
+            if (usdc.balanceOf(msg.sender) < totalCost) revert InsufficientBalance();
+
+            // Transfer USDC to contract for escrow
+            bool success = usdc.transferFrom(msg.sender, address(this), totalCost);
+            require(success, "USDC transfer failed");
+        }
 
         orderId = nextOrderId++;
 
@@ -119,12 +135,26 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
         if (!order.isActive) revert OrderNotActive();
         if (order.trader != msg.sender) revert Unauthorized();
 
-        // TODO: Implement order cancellation in Week 3
-        // - Return escrowed tokens/USDC to trader
-        // - Mark order as inactive
-        // - Remove from active orders list
+        // Get the appropriate token
+        IERC20 token = order.isSenior ? seniorToken : juniorToken;
 
+        // Return escrowed assets to trader
+        if (order.orderType == OrderType.Sell) {
+            // Return escrowed tranche tokens
+            bool success = token.transfer(msg.sender, order.amount);
+            require(success, "Token transfer failed");
+        } else {
+            // Return escrowed USDC
+            uint256 totalCost = (order.amount * order.price) / 1e6;
+            bool success = usdc.transfer(msg.sender, totalCost);
+            require(success, "USDC transfer failed");
+        }
+
+        // Mark order as inactive
         order.isActive = false;
+
+        // Remove from activeOrderIds array
+        _removeFromActiveOrders(orderId);
 
         emit OrderCancelled(orderId);
     }
@@ -144,17 +174,49 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
         if (!order.isActive) revert OrderNotActive();
         if (amount == 0 || amount > order.amount) revert InvalidAmount();
 
-        // TODO: Implement order filling in Week 3
-        // Calculate fee (0.3%)
-        // For Sell orders:
-        // - Transfer tranche tokens from escrow to buyer
-        // - Transfer USDC from buyer to seller (minus fee)
-        // For Buy orders:
-        // - Transfer tranche tokens from seller to buyer
-        // - Transfer USDC from escrow to seller (minus fee)
+        // Get the appropriate token
+        IERC20 token = order.isSenior ? seniorToken : juniorToken;
 
+        // Calculate costs
         uint256 totalCost = (amount * order.price) / 1e6;
         uint256 fee = (totalCost * TRADING_FEE_BPS) / BPS_DIVISOR;
+        uint256 sellerReceives = totalCost - fee;
+
+        if (order.orderType == OrderType.Sell) {
+            // Sell order: Transfer tokens from escrow to buyer, USDC from buyer to seller
+
+            // Check buyer has sufficient USDC
+            if (usdc.balanceOf(msg.sender) < totalCost) revert InsufficientBalance();
+
+            // Transfer tranche tokens from escrow to buyer
+            bool tokenSuccess = token.transfer(msg.sender, amount);
+            require(tokenSuccess, "Token transfer failed");
+
+            // Transfer USDC from buyer to seller (minus fee)
+            bool usdcSuccess = usdc.transferFrom(msg.sender, order.trader, sellerReceives);
+            require(usdcSuccess, "USDC transfer to seller failed");
+
+            // Transfer fee to platform treasury
+            bool feeSuccess = usdc.transferFrom(msg.sender, platformTreasury, fee);
+            require(feeSuccess, "Fee transfer failed");
+        } else {
+            // Buy order: Transfer tokens from seller to buyer, USDC from escrow to seller
+
+            // Check seller has sufficient tokens
+            if (token.balanceOf(msg.sender) < amount) revert InsufficientBalance();
+
+            // Transfer tranche tokens from seller to buyer (order.trader)
+            bool tokenSuccess = token.transferFrom(msg.sender, order.trader, amount);
+            require(tokenSuccess, "Token transfer failed");
+
+            // Transfer USDC from escrow to seller (minus fee)
+            bool usdcSuccess = usdc.transfer(msg.sender, sellerReceives);
+            require(usdcSuccess, "USDC transfer to seller failed");
+
+            // Transfer fee to platform treasury
+            bool feeSuccess = usdc.transfer(platformTreasury, fee);
+            require(feeSuccess, "Fee transfer failed");
+        }
 
         totalVolume += totalCost;
         totalFees += fee;
@@ -163,6 +225,7 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
         order.amount -= amount;
         if (order.amount == 0) {
             order.isActive = false;
+            _removeFromActiveOrders(orderId);
         }
 
         emit OrderFilled(
@@ -199,7 +262,10 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
         override
         returns (Order[] memory)
     {
-        // TODO: Implement efficient order filtering in Week 3
+        // Note: This implementation is O(n) where n is number of active orders
+        // For gas optimization with large order books, consider using a mapping-based index
+        // Current implementation is sufficient for MVP with expected order volume <1000
+
         // Count matching orders
         uint256 count = 0;
         for (uint256 i = 0; i < activeOrderIds.length; i++) {
@@ -234,7 +300,10 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
         override
         returns (Order[] memory)
     {
-        // TODO: Implement user order tracking in Week 3
+        // Note: This implementation is O(n) where n is total number of orders
+        // For gas optimization with many users, consider maintaining per-user order index
+        // Current implementation is sufficient for MVP
+
         // Count user's orders
         uint256 count = 0;
         for (uint256 i = 0; i < nextOrderId; i++) {
@@ -289,5 +358,21 @@ contract SecondaryMarket is ISecondaryMarket, ReentrancyGuard, AccessControl {
 
         seniorToken = IERC20(_seniorToken);
         juniorToken = IERC20(_juniorToken);
+    }
+
+    /**
+     * @notice Removes an order ID from the activeOrderIds array
+     * @dev Internal helper function for order cancellation and completion
+     * @param orderId Order ID to remove
+     */
+    function _removeFromActiveOrders(uint256 orderId) private {
+        for (uint256 i = 0; i < activeOrderIds.length; i++) {
+            if (activeOrderIds[i] == orderId) {
+                // Replace with last element and pop
+                activeOrderIds[i] = activeOrderIds[activeOrderIds.length - 1];
+                activeOrderIds.pop();
+                break;
+            }
+        }
     }
 }

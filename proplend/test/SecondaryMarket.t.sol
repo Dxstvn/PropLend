@@ -79,6 +79,7 @@ contract SecondaryMarketTest is Test {
         usdc.mint(buyer, 1_000_000e6);
         usdc.mint(seller, 1_000_000e6);
         usdc.mint(trader1, 500_000e6);
+        usdc.mint(trader2, 500_000e6);
 
         // Mint tranche tokens for testing
         MINTER_ROLE = seniorToken.MINTER_ROLE();
@@ -88,6 +89,28 @@ contract SecondaryMarketTest is Test {
         seniorToken.mint(seller, 100_000e6);
         juniorToken.mint(seller, 50_000e6);
         seniorToken.mint(trader1, 50_000e6);
+        juniorToken.mint(trader1, 50_000e6); // Also mint junior tokens for trader1
+
+        // Approve market to spend tokens (for testing convenience)
+        vm.prank(seller);
+        seniorToken.approve(address(market), type(uint256).max);
+        vm.prank(seller);
+        juniorToken.approve(address(market), type(uint256).max);
+        vm.prank(seller);
+        usdc.approve(address(market), type(uint256).max);
+
+        vm.prank(buyer);
+        usdc.approve(address(market), type(uint256).max);
+
+        vm.prank(trader1);
+        seniorToken.approve(address(market), type(uint256).max);
+        vm.prank(trader1);
+        juniorToken.approve(address(market), type(uint256).max);
+        vm.prank(trader1);
+        usdc.approve(address(market), type(uint256).max);
+
+        vm.prank(trader2);
+        usdc.approve(address(market), type(uint256).max);
     }
 
     /*//////////////////////////////////////////////////////////////
